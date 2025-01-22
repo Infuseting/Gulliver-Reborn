@@ -2,7 +2,13 @@ package com.camellias.gulliverreborn;
 
 import java.io.File;
 import java.util.List;
+import java.util.UUID;
 
+import com.artemis.artemislib.util.attributes.ArtemisLibAttributes;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
+import net.minecraft.entity.ai.attributes.AttributeModifier;
+import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
@@ -89,56 +95,29 @@ public class GulliverReborn
 	public static final String DEPENDENCIES = "required-after:forge@[14.23.5.2795,];" + "required-after:artemislib@[1.0.6,];";
 	public static final Logger LOGGER = LogManager.getLogger(NAME);
 	public static File config;
-	
+	private static UUID uuidHeight = UUID.fromString("5440b01a-974f-4495-bb9a-c7c87424bca4");
+	private static UUID uuidWidth = UUID.fromString("3949d2ed-b6cc-4330-9c13-98777f48ea51");
+
 	public static DamageSource causeCrushingDamage(EntityLivingBase entity)
 	{
 		return new EntityDamageSource(MODID + ".crushing", entity);
 	}
-	
+
 	@EventHandler
 	public void preInit(FMLPreInitializationEvent event)
 	{
 		Config.registerConfig(event);
 		MinecraftForge.EVENT_BUS.register(new GulliverReborn());
 	}
-	
+
 	@EventHandler
 	public void serverRegistries(FMLServerStartingEvent event)
 	{
 		event.registerServerCommand(new MyResizeCommand());
 		event.registerServerCommand(new OthersResizeCommand());
 	}
-	
-	@SubscribeEvent
-	public void onPlayerFall(LivingFallEvent event)
-	{
-		if(event.getEntityLiving() instanceof EntityPlayer)
-		{
-			EntityPlayer player = (EntityPlayer) event.getEntityLiving();
-			
-			if(Config.SCALED_FALL_DAMAGE) event.setDistance(event.getDistance() / (player.height * 0.6F));
-			if(player.height < 0.45F) event.setDistance(0);
-		}
-	}
-	
-	@SubscribeEvent
-	public void onLivingTick(LivingUpdateEvent event)
-	{
-		EntityLivingBase entity = event.getEntityLiving();
-		World world = event.getEntityLiving().world;
-		
-		for(EntityLivingBase entities : world.getEntitiesWithinAABB(EntityLivingBase.class, entity.getEntityBoundingBox()))
-		{
-			if(!entity.isSneaking() && Config.GIANTS_CRUSH_ENTITIES)
-			{
-				if(entity.height / entities.height >= 4 && entities.getRidingEntity() != entity)
-				{
-					entities.attackEntityFrom(causeCrushingDamage(entity), entity.height - entities.height);
-				}
-			}
-		}
-	}
-	
+
+
 	@SubscribeEvent
 	public void onTargetEntity(LivingSetAttackTargetEvent event)
 	{
@@ -146,7 +125,7 @@ public class GulliverReborn
 		{
 			EntityPlayer player = (EntityPlayer) event.getTarget();
 			EntityLiving entity = (EntityLiving) event.getEntityLiving();
-			
+
 			if(!(entity instanceof EntitySpider || entity instanceof EntityOcelot))
 			{
 				if(player.height <= 0.45F)
@@ -156,30 +135,29 @@ public class GulliverReborn
 			}
 		}
 	}
-	
+
 	@SubscribeEvent
 	public void onPlayerTick(PlayerTickEvent event)
 	{
 		EntityPlayer player = event.player;
 		World world = event.player.world;
-		
+
 		player.stepHeight = player.height / 3F;
-		player.jumpMovementFactor *= (player.height / 1.8F);
-		
+
 		if(player.height < 0.9F)
 		{
 			BlockPos pos = new BlockPos(player.posX, player.posY, player.posZ);
 			IBlockState state = world.getBlockState(pos);
 			Block block = state.getBlock();
 			float ratio = (player.height / 1.8F) / 2;
-			
+
 			if(block instanceof BlockRedFlower
 				|| state == Blocks.DOUBLE_PLANT.getDefaultState().withProperty(BlockDoublePlant.VARIANT, BlockDoublePlant.EnumPlantType.ROSE)
 				&& Config.ROSES_HURT)
 			{
 				player.attackEntityFrom(DamageSource.CACTUS, 1);
 			}
-			
+
 			if(!player.capabilities.isFlying
 				&& Config.PLANTS_SLOW_SMALL_DOWN
 				&& (block instanceof BlockBush)
@@ -195,7 +173,7 @@ public class GulliverReborn
 				player.motionZ *= ratio;
 			}
 		}
-		
+
 		if(player.height <= 0.45F)
 		{
 			EnumFacing facing = player.getHorizontalFacing();
@@ -203,7 +181,7 @@ public class GulliverReborn
 			IBlockState state = world.getBlockState(pos.add(0, 0, 0).offset(facing));
 			Block block = state.getBlock();
 			boolean canPass = block.isPassable(world, pos.offset(facing));
-			
+
 			if(ClimbingHandler.canClimb(player, facing)
 				&& Config.CLIMB_SOME_BLOCKS
 				&& (block instanceof BlockDirt)
@@ -224,14 +202,14 @@ public class GulliverReborn
 					{
 						player.motionY = 0.1D;
 					}
-					
+
 					if(player.isSneaking())
 					{
 						player.motionY = 0.0D;
 					}
 				}
 			}
-			
+
 			for(ItemStack stack : player.getHeldEquipment())
 			{
 				if(stack.getItem() == Items.SLIME_BALL || stack.getItem() == Item.getItemFromBlock(Blocks.SLIME_BLOCK) && Config.CLIMB_WITH_SLIME)
@@ -244,7 +222,7 @@ public class GulliverReborn
 							{
 								player.motionY = 0.1D;
 							}
-							
+
 							if(player.isSneaking())
 							{
 								player.motionY = 0.0D;
@@ -252,24 +230,19 @@ public class GulliverReborn
 						}
 					}
 				}
-				
+
 				if(stack.getItem() == Items.PAPER && Config.GLIDE_WITH_PAPER)
 				{
 					if(!player.onGround)
 					{
-						player.jumpMovementFactor = 0.02F * 1.75F;
 						player.fallDistance = 0;
-						
+
 						if(player.motionY < 0D)
 						{
 							player.motionY *= 0.6D;
 						}
-						
-						if(player.isSneaking())
-						{
-							player.jumpMovementFactor *= 3.50F;
-						}
-						
+
+
 						for(double blockY = player.posY; !player.isSneaking() &&
 								((world.getBlockState(new BlockPos(player.posX, blockY, player.posZ)).getBlock() == Blocks.AIR) ||
 								(world.getBlockState(new BlockPos(player.posX, blockY, player.posZ)).getBlock() == Blocks.LAVA) ||
@@ -293,7 +266,7 @@ public class GulliverReborn
 			}
 		}
 	}
-	
+
 	@SubscribeEvent
 	public void onEntityInteract(EntityInteract event)
 	{
@@ -301,7 +274,7 @@ public class GulliverReborn
 		{
 			EntityLivingBase target = (EntityLivingBase) event.getTarget();
 			EntityPlayer player = event.getEntityPlayer();
-			
+
 			if(target.height / 2 >= player.height && Config.RIDE_BIG_ENTITIES)
 			{
 				for(ItemStack stack : player.getHeldEquipment())
@@ -312,12 +285,12 @@ public class GulliverReborn
 					}
 				}
 			}
-			
+
 			if(target.height * 2 <= player.height && Config.PICKUP_SMALL_ENTITIES)
 			{
 				target.startRiding(player);
 			}
-			
+
 			if(player.getHeldItemMainhand().isEmpty() && player.isBeingRidden() && player.isSneaking())
 			{
 				for(Entity entities : player.getPassengers())
@@ -330,33 +303,29 @@ public class GulliverReborn
 			}
 		}
 	}
-	
+
 	@SubscribeEvent
 	public void onEntityJump(LivingJumpEvent event)
 	{
-		if(event.getEntityLiving() instanceof EntityPlayer && Config.JUMP_MODIFIER)
+		if(event.getEntityLiving() instanceof EntityPlayer)
 		{
 			EntityPlayer player = (EntityPlayer) event.getEntityLiving();
-			float jumpHeight = (player.height / 1.8F);
-			
-			jumpHeight = MathHelper.clamp(jumpHeight, 0.65F, jumpHeight);
-			player.motionY *= jumpHeight;
-			
+
 			if(player.isSneaking() || player.isSprinting())
 			{
 				if(player.height < 1.8F) player.motionY = 0.42F;
 			}
 		}
 	}
-	
+
 	@SubscribeEvent
 	public void onHarvest(BreakSpeed event)
 	{
 		EntityPlayer player = event.getEntityPlayer();
-		
+
 		if(Config.HARVEST_MODIFIER) event.setNewSpeed(event.getOriginalSpeed() * (player.height / 1.8F));
 	}
-	
+
 	@SubscribeEvent
 	@SideOnly(Side.CLIENT)
 	public void onFOVChange(FOVUpdateEvent event)
@@ -367,7 +336,7 @@ public class GulliverReborn
 			GameSettings settings = Minecraft.getMinecraft().gameSettings;
 			PotionEffect speed = player.getActivePotionEffect(MobEffects.SPEED);
 			float fov = settings.fovSetting / settings.fovSetting;
-			
+
 			if(player.isSprinting())
 			{
 				event.setNewfov(speed != null ? fov + ((0.1F * (speed.getAmplifier() + 1)) + 0.15F) : fov + 0.1F);
@@ -378,25 +347,25 @@ public class GulliverReborn
 			}
 		}
 	}
-	
+
 	@SubscribeEvent
 	@SideOnly(Side.CLIENT)
 	public void onCameraSetup(CameraSetup event)
 	{
 		EntityPlayer player = Minecraft.getMinecraft().player;
 		float scale = player.height / 1.8F;
-		
+
 		if(Minecraft.getMinecraft().gameSettings.thirdPersonView == 1)
 		{
 			if(player.height > 1.8F) GL11.glTranslatef(0, 0, -scale * 2);
 		}
-		
+
 		if(Minecraft.getMinecraft().gameSettings.thirdPersonView == 2)
 		{
 			if(player.height > 1.8F) GL11.glTranslatef(0, 0, scale * 2);
 		}
 	}
-	
+
 	@SubscribeEvent
 	@SideOnly(Side.CLIENT)
 	public void onEntityRenderPre(RenderLivingEvent.Pre event)
@@ -404,15 +373,15 @@ public class GulliverReborn
 		if(Config.DO_ADJUSTED_RENDER)
 		{
 			final EntityLivingBase entity = event.getEntity();
-			
+
 			if(entity.hasCapability(SizeCapPro.sizeCapability, null))
 			{
 				final ISizeCap cap = entity.getCapability(SizeCapPro.sizeCapability, null);
-				
+
 				if(cap.getTrans() == true)
 				{
 					float scale = entity.height / cap.getDefaultHeight();
-					
+
 					if(scale < 0.4F)
 					{
 						GlStateManager.pushMatrix();
@@ -424,7 +393,7 @@ public class GulliverReborn
 			}
 		}
 	}
-	
+
 	@SubscribeEvent
 	@SideOnly(Side.CLIENT)
 	public void onLivingRenderPost(RenderLivingEvent.Post event)
@@ -432,15 +401,15 @@ public class GulliverReborn
 		if(Config.DO_ADJUSTED_RENDER)
 		{
 			final EntityLivingBase entity = event.getEntity();
-			
+
 			if(entity.hasCapability(SizeCapPro.sizeCapability, null))
 			{
 				final ISizeCap cap = entity.getCapability(SizeCapPro.sizeCapability, null);
-				
+
 				if(cap.getTrans() == true)
 				{
 					float scale = entity.height / cap.getDefaultHeight();
-					
+
 					if(scale < 0.4F)
 					{
 						GlStateManager.popMatrix();
@@ -448,5 +417,37 @@ public class GulliverReborn
 				}
 			}
 		}
+	}
+	public static void changeSize(EntityPlayer sender, float size) {
+		size = MathHelper.clamp(size, 0.6F, 1.05F);
+		Multimap<String, AttributeModifier> attributes = HashMultimap.create();
+		Multimap<String, AttributeModifier> removeableAttributes = HashMultimap.create();
+		Multimap<String, AttributeModifier> removeableAttributes2 = HashMultimap.create();
+
+		attributes.put(ArtemisLibAttributes.ENTITY_HEIGHT.getName(), new AttributeModifier(uuidHeight, "Player Height", size - 1, 2));
+		attributes.put(ArtemisLibAttributes.ENTITY_WIDTH.getName(), new AttributeModifier(uuidWidth, "Player Width", MathHelper.clamp(size - 1, 0.4 - 1, Config.MAX_SIZE), 2));
+
+		if(size > 1)
+		{
+			((EntityPlayer) sender).getAttributeMap().applyAttributeModifiers(removeableAttributes);
+		}
+		else
+		{
+			((EntityPlayer) sender).getAttributeMap().removeAttributeModifiers(removeableAttributes);
+		}
+
+		if(size < 1)
+		{
+			((EntityPlayer) sender).getAttributeMap().applyAttributeModifiers(removeableAttributes2);
+		}
+		else
+		{
+			((EntityPlayer) sender).getAttributeMap().removeAttributeModifiers(removeableAttributes2);
+		}
+
+		((EntityPlayer) sender).getAttributeMap().applyAttributeModifiers(attributes);
+		((EntityPlayer) sender).setHealth(((EntityPlayer) sender).getMaxHealth());
+
+		if(sender instanceof EntityPlayer) GulliverReborn.LOGGER.info(((EntityPlayer) sender).getDisplayNameString() + " : " + size + " size");
 	}
 }
